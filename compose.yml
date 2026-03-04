@@ -3,7 +3,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.25.0.0/24
+        - subnet: 172.26.0.0/24
 
 services:
   web-01:
@@ -14,7 +14,7 @@ services:
     hostname: web-01
     networks:
       lablan:
-        ipv4_address: 172.25.0.11
+        ipv4_address: 172.26.0.11
     ports:
       - "2211:22"
       - "8080:80"
@@ -27,7 +27,7 @@ services:
     hostname: web-02
     networks:
       lablan:
-        ipv4_address: 172.25.0.12
+        ipv4_address: 172.26.0.12
     ports:
       - "2212:22"
       - "8081:80"
@@ -40,7 +40,7 @@ services:
     hostname: lb-01
     networks:
       lablan:
-        ipv4_address: 172.25.0.10
+        ipv4_address: 172.26.0.10
     ports:
       - "2210:22"
       - "8082:80"
