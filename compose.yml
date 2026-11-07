@@ -14,10 +14,12 @@ services:
     hostname: web-01
     networks:
       lablan:
-        ipv4_address: 172.26.0.11
+        ipv4_address: 172.26.0.20
     ports:
       - "2211:22"
       - "8080:80"
+    cap_add:
+      - NET_ADMIN
 
   web-02:
     build:
@@ -45,3 +47,18 @@ services:
       - "2210:22"
       - "8082:80"
       - "4443:443"
+
+  # web-03: Alpine + intentionally vulnerable OpenSSH (CVE-2026-123158).
+  # SSH-only, isolated on lablan. See web-alpine/README.md for the full
+  # write-up and demonstration script. Do not expose beyond localhost.
+  web-03:
+    build:
+      context: ./web-alpine
+      network: host
+    container_name: web-03
+    hostname: web-03
+    networks:
+      lablan:
+        ipv4_address: 172.26.0.13
+    ports:
+      - "2213:22"

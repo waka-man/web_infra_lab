@@ -1,6 +1,6 @@
 # Web Infrastructure Lab
 
-This repository provides a lightweight environment to demonstrate web server setup and basic load balancing using Docker containers. The stack consists of two web servers (`web-01` and `web-02`) and a load balancer (`lb-01`) connected to a custom Docker network. Each service runs Ubuntu 24.04 with SSH enabled to allow you to install and configure additional software.
+This repository provides a lightweight environment to demonstrate web server setup and basic load balancing using Docker containers. The stack consists of two web servers (`web-01` and `web-02`), a load balancer (`lb-01`), and an intentionally vulnerable Alpine host (`web-03`, for CVE-2026-123158 — see below) connected to a custom Docker network. Each service runs Ubuntu 24.04 (web-03: Alpine 3.21) with SSH enabled to allow you to install and configure additional software.
 
 ## Requirements
 
@@ -22,19 +22,21 @@ This repository provides a lightweight environment to demonstrate web server set
    ```bash
    docker compose ps
    ```
-   You should see `web-01`, `web-02`, and `lb-01` online. The services are attached to the `lablan` network with the following addresses:
+   You should see `web-01`, `web-02`, `lb-01`, and `web-03` online. The services are attached to the `lablan` network with the following addresses:
 
-   | Container | IP           | Exposed Ports |
-   |---------- |------------- |---------------|
-   | web-01    | 172.20.0.11  | 2211 (SSH), 8080 (HTTP) |
-   | web-02    | 172.20.0.12  | 2212 (SSH), 8081 (HTTP) |
-   | lb-01     | 172.20.0.10  | 2210 (SSH), 8082 (HTTP), 4443 (HTTPS) |
+   | Container | IP            | Exposed Ports |
+   |---------- |-------------- |---------------|
+   | web-01    | 172.26.0.20   | 2211 (SSH), 8080 (HTTP) |
+   | web-02    | 172.26.0.12   | 2212 (SSH), 8081 (HTTP) |
+   | lb-01     | 172.26.0.10   | 2210 (SSH), 8082 (HTTP), 4443 (HTTPS) |
+   | web-03    | 172.26.0.13   | 2213 (SSH, Alpine — CVE-2026-123158 lab) |
 
 4. Connect to each container using SSH if you prefer an interactive terminal. All containers include an `ubuntu` user with the password `pass123`.
    ```bash
    ssh ubuntu@localhost -p 2211  # web-01
    ssh ubuntu@localhost -p 2212  # web-02
    ssh ubuntu@localhost -p 2210  # lb-01
+   ssh ubuntu@localhost -p 2213  # web-03 (Alpine; also has key-only `alpine` user)
    ```
 
 ## Nginx Setup on `web-01` and `web-02`
@@ -170,7 +172,52 @@ You should see a `301` redirect to the HTTPS URL.
 
 Repeated requests should alternate between `web-01` and `web-02`, and the `X-Served-By` header will reveal which server handled each request.
 
-Feel free to experiment with the configuration and explore additional features of HAProxy. When you are finished with the lab environment, shut it down with:
+Feel free to experiment with the configuration and explore additional features of HAProxy.
+
+## Activity – CVE-2026-123158 (*sshole) on `web-03` (Alpine)
+
+`web-03` is an Alpine 3.21 host with **OpenSSH 9.9p2-r0** — the version
+vulnerable to **CVE-2026-123158**, an OpenSSH password-authentication
+bypass on musl systems without PAM (CVSS 8.1). On a musl host with
+password logins enabled, an account whose `/etc/shadow` field is `*`
+(no password — e.g. a key-only user) accepts **any 257–1024 byte
+password**, because musl's `crypt()` returns `"*"` for over-long keys
+and sshd compares that to the stored `"*"`. Your Ubuntu hosts
+(`web-01`/`web-02`, glibc + PAM) are not affected and serve as the
+control group.
+
+> ⚠️ `web-03` is **intentionally vulnerable**. Keep it on the lab
+> network only; never expose port 2213 publicly.
+
+Full write-up, root-cause walkthrough, and the instructor
+demonstration script (preconditions, bypass, controls, fix, and
+detection) are in [`web-alpine/README.md`](web-alpine/README.md).
+Quick start:
+
+```bash
+docker compose up -d --build web-03
+pip install paramiko   # once, on the host
+python3 web-alpine/sshhole_demo.py                    # 300 x A -> logged in as alpine, then root
+python3 web-alpine/sshhole_demo.py localhost 2213 alpine 256  # rejected (boundary)
+python3 web-alpine/sshhole_demo.py localhost 2211 ubuntu 300  # web-01 Ubuntu -> rejected (control)
+```
+
+The demo needs **two password attempts on one SSH connection**
+(first `"wrong"` primes sshd's salt cache, then the long password) —
+`sshhole_demo.py` handles that. To reproduce the bug on bare metal /
+in a VM instead, download the vulnerable Alpine 3.21.9 ISO:
+
+```bash
+./web-alpine/download-vulnerable-alpine.sh   # wget + SHA-256 verify, ~280 MB
+```
+
+Fix (in the container): `docker exec web-03 apk upgrade -U -a &&
+docker restart web-03` — the restart matters, upgrading alone does
+not replace the running `sshd`. To restore the vulnerable image
+after patching: `docker compose up -d --force-recreate web-03`
+(`--build` alone will not recreate a running container).
+
+When you are finished with the lab environment, shut it down with:
 ```bash
 docker compose down
 ```

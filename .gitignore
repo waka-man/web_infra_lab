@@ -1,0 +1,8 @@
+# Downloaded Alpine ISOs (vulnerable lab images, ~280 MB) — see
+# web-alpine/download-vulnerable-alpine.sh. Never commit these.
+*.iso
+*.iso.sha256
+
+# Extracted SSH demo keys (web-03's alpine demo_key)
+demo_key
+alpine_demo_key*
